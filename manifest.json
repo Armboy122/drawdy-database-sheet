@@ -1,8 +1,8 @@
 {
-  "driverId": "drawdy.database-sheet",
-  "driverName": "Database Sheet & Table Viewer",
-  "driverVersion": "1.0.0",
-  "description": "Interactive spreadsheet and database table viewer with multi-table tabs (Users, Products, Orders, Invoices), real-time search, inline row editing, CSV export, and 1-click Export to Canvas.",
+  "driverId": "drawdy.comparison-sheet",
+  "driverName": "Drawdy Sheet & Table Creator",
+  "driverVersion": "1.1.0",
+  "description": "Insert customizable comparison tables, feature matrices, and spreadsheet grids directly onto the Drawdy canvas with clear columns, rows, and editable cells.",
   "main": "main.js",
   "icon": "icon.svg",
   "permissions": [

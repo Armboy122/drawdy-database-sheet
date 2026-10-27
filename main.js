@@ -1,8 +1,10 @@
 "use strict";
 
-const ACTION_BTN_ID = "btn-db-sheet";
-const MENU_ID = "menu-db-sheet";
-const WEBVIEW_ID = "db-sheet-webview";
+const ACTION_BTN_INSERT = "btn-insert-table";
+const ACTION_BTN_ADD_ROW = "btn-add-table-row";
+const MENU_INSERT = "menu-insert-table";
+const MENU_QUICK_3 = "menu-quick-3";
+const WEBVIEW_ID = "table-creator-dialog";
 
 let issue;
 let driverId;
@@ -10,245 +12,397 @@ let generateId;
 let reqSeq = 0;
 const nextRequestId = () => String(reqSeq++);
 
-// Initial Datasets
-const DATASETS = {
-  users: {
-    name: "Users (ผู้ใช้งาน)",
-    columns: ["id", "email", "full_name", "role", "status", "created_at"],
-    types: ["UUID [PK]", "VARCHAR(255)", "VARCHAR(100)", "VARCHAR(30)", "VARCHAR(20)", "TIMESTAMPTZ"],
-    rows: [
-      ["usr_001", "somchai@example.com", "สมชาย ใจดี", "tenant", "active", "2026-10-01 09:00"],
-      ["usr_002", "waraporn@company.co", "วราภรณ์ สุขเกษม", "host", "active", "2026-10-05 11:30"],
-      ["usr_003", "kitti.p@startup.io", "กิตติ พงษ์ศิริ", "admin", "active", "2026-10-10 14:15"],
-      ["usr_004", "sarah.w@global.net", "Sarah Wilson", "tenant", "active", "2026-10-15 16:45"],
-      ["usr_005", "anan.c@retail.th", "อนันต์ ชัยชนะ", "tenant", "suspended", "2026-10-20 18:20"]
-    ]
-  },
-  products: {
-    name: "Products (สินค้า & บริการ)",
-    columns: ["id", "sku", "title", "category", "price_thb", "stock_qty"],
-    types: ["UUID [PK]", "VARCHAR(50)", "VARCHAR(150)", "VARCHAR(50)", "NUMERIC(10,2)", "INT"],
-    rows: [
-      ["prd_001", "IOT-MTR-01", "สมาร์ทมิเตอร์ไฟฟ้า 1-Phase 100A", "iot", "2450.00", "120"],
-      ["prd_002", "IOT-GW-MESH", "เกตเวย์รับส่งสัญญาณ LoRa/Zigbee", "iot", "4800.00", "45"],
-      ["prd_003", "SUB-EMB-MO", "ไลเซนส์ Embedded Analytics / ห้อง", "addon", "25.00", "9999"],
-      ["prd_004", "SVC-SETUP", "บริการเชื่อมต่อและ Setup ระบบ API", "utility", "0.00", "999"],
-      ["prd_005", "IOT-CT-SENSOR", "หม้อแปลงกระแส Current Transformer", "iot", "650.00", "350"]
-    ]
-  },
-  orders: {
-    name: "Orders (คำสั่งซื้อ & การจอง)",
-    columns: ["id", "order_no", "user_id", "total_amount", "order_status", "placed_at"],
-    types: ["UUID [PK]", "VARCHAR(30)", "UUID [FK]", "NUMERIC(12,2)", "VARCHAR(20)", "TIMESTAMPTZ"],
-    rows: [
-      ["ord_001", "ORD-202610-001", "usr_001", "4925.00", "paid", "2026-10-25 14:30"],
-      ["ord_002", "ORD-202610-002", "usr_002", "24000.00", "paid", "2026-10-26 09:15"],
-      ["ord_003", "ORD-202610-003", "usr_004", "2450.00", "pending", "2026-10-27 10:00"],
-      ["ord_004", "ORD-202610-004", "usr_003", "7275.00", "paid", "2026-10-27 18:00"]
-    ]
-  },
-  invoices: {
-    name: "Invoices (ใบแจ้งหนี้ & ชำระเงิน)",
-    columns: ["id", "invoice_no", "order_id", "due_date", "payment_method", "paid_at"],
-    types: ["UUID [PK]", "VARCHAR(30)", "UUID [FK]", "DATE", "VARCHAR(30)", "TIMESTAMPTZ"],
-    rows: [
-      ["inv_001", "INV-202610-8801", "ord_001", "2026-10-31", "promptpay", "2026-10-25 14:32"],
-      ["inv_002", "INV-202610-8802", "ord_002", "2026-10-31", "credit_card", "2026-10-26 09:18"],
-      ["inv_003", "INV-202610-8803", "ord_003", "2026-11-05", "promptpay", "null"],
-      ["inv_004", "INV-202610-8804", "ord_004", "2026-10-31", "bank_transfer", "2026-10-27 18:05"]
-    ]
-  }
+// Keep track of last created table on canvas
+let lastTable = null;
+
+const THEMES = {
+  blue: { headerBg: "#0284c7", headerBorder: "#0369a1", altBg: "#f0f9ff", highlightBg: "#e0f2fe", border: "#cbd5e1" },
+  emerald: { headerBg: "#059669", headerBorder: "#047857", altBg: "#f0fdf4", highlightBg: "#dcfce7", border: "#cbd5e1" },
+  purple: { headerBg: "#7c3aed", headerBorder: "#6d28d9", altBg: "#faf5ff", highlightBg: "#f3e8ff", border: "#cbd5e1" },
+  amber: { headerBg: "#d97706", headerBorder: "#b45309", altBg: "#fffbeb", highlightBg: "#fef3c7", border: "#cbd5e1" },
+  dark: { headerBg: "#1e293b", headerBorder: "#334155", altBg: "#0f172a", highlightBg: "#1e293b", border: "#334155" }
 };
 
-function buildWebviewHtml() {
-  const jsonStr = JSON.stringify(DATASETS);
+function buildCreatorHtml() {
   return `<!DOCTYPE html>
 <html lang="th">
 <head>
   <meta charset="UTF-8">
-  <title>Database Sheet & Table Viewer</title>
+  <title>สร้างตารางเปรียบเทียบข้อมูล</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
-    body { background: #0f172a; color: #f8fafc; padding: 16px; font-size: 13px; }
-    .header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; border-bottom: 1px solid #334155; padding-bottom: 10px; }
-    .header h2 { font-size: 16px; font-weight: 700; color: #38bdf8; display: flex; align-items: center; gap: 8px; }
-    .tabs { display: flex; gap: 6px; margin-bottom: 12px; }
-    .tab-btn { background: #1e293b; color: #94a3b8; border: 1px solid #334155; padding: 6px 14px; border-radius: 8px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.15s; }
-    .tab-btn:hover { background: #334155; color: #fff; }
-    .tab-btn.active { background: #0284c7; color: #ffffff; border-color: #38bdf8; }
-    .toolbar { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
-    .search-input { flex: 1; background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 6px 12px; color: #fff; font-size: 12px; outline: none; }
-    .search-input:focus { border-color: #38bdf8; }
-    .btn { background: #334155; color: #f1f5f9; border: none; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; display: flex; align-items: center; gap: 4px; transition: background 0.15s; }
-    .btn:hover { background: #475569; }
-    .btn-primary { background: #0284c7; color: #fff; }
-    .btn-primary:hover { background: #0369a1; }
-    .btn-success { background: #10b981; color: #fff; }
-    .btn-success:hover { background: #059669; }
-    .table-container { max-height: 380px; overflow-y: auto; border: 1px solid #334155; border-radius: 8px; background: #1e293b; }
-    table { width: 100%; border-collapse: collapse; text-align: left; }
-    th { background: #111827; color: #94a3b8; font-weight: 600; padding: 8px 12px; border-bottom: 1px solid #334155; position: sticky; top: 0; font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; }
-    td { padding: 8px 12px; border-bottom: 1px solid #2d3748; color: #e2e8f0; font-size: 12px; }
-    tr:hover { background: rgba(56, 189, 248, 0.08); }
-    .cell-editable { outline: none; padding: 2px 4px; border-radius: 4px; border: 1px solid transparent; }
-    .cell-editable:focus { border-color: #38bdf8; background: #0f172a; }
-    .badge-pk { background: #ef4444; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; margin-left: 4px; }
-    .badge-fk { background: #f59e0b; color: #fff; padding: 2px 6px; border-radius: 4px; font-size: 9px; font-weight: bold; margin-left: 4px; }
-    .btn-del { color: #f87171; cursor: pointer; background: none; border: none; font-size: 13px; }
-    .footer { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; color: #64748b; font-size: 11px; }
+    body { background: #0f172a; color: #f8fafc; padding: 18px; font-size: 13px; line-height: 1.5; }
+    h2 { font-size: 16px; font-weight: 700; color: #38bdf8; margin-bottom: 4px; display: flex; align-items: center; gap: 8px; }
+    p.sub { font-size: 12px; color: #94a3b8; margin-bottom: 14px; }
+    .section-title { font-size: 12px; font-weight: 600; color: #cbd5e1; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+    .templates { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+    .tpl-btn { background: #1e293b; border: 1px solid #334155; border-radius: 8px; padding: 10px; cursor: pointer; text-align: left; transition: all 0.15s; }
+    .tpl-btn:hover { background: #334155; border-color: #38bdf8; }
+    .tpl-btn.active { background: #0284c7; border-color: #38bdf8; color: #fff; }
+    .tpl-name { font-weight: 600; font-size: 13px; margin-bottom: 2px; }
+    .tpl-desc { font-size: 11px; opacity: 0.8; }
+    .form-group { margin-bottom: 12px; }
+    label { display: block; font-size: 12px; font-weight: 600; color: #94a3b8; margin-bottom: 4px; }
+    input[type="text"], input[type="number"] { width: 100%; background: #1e293b; border: 1px solid #334155; border-radius: 6px; padding: 8px 10px; color: #fff; font-size: 12px; outline: none; }
+    input:focus { border-color: #38bdf8; }
+    .row-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .color-picker { display: flex; gap: 8px; margin-top: 4px; }
+    .color-opt { width: 26px; height: 26px; border-radius: 6px; cursor: pointer; border: 2px solid transparent; transition: transform 0.1s; }
+    .color-opt:hover { transform: scale(1.1); }
+    .color-opt.active { border-color: #fff; }
+    .btn-create { width: 100%; background: #0284c7; color: #fff; border: none; padding: 10px; border-radius: 8px; font-size: 14px; font-weight: 700; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 6px; margin-top: 14px; transition: background 0.15s; }
+    .btn-create:hover { background: #0369a1; }
   </style>
 </head>
 <body>
-  <div class="header">
-    <h2>📊 Database Sheet & Table Viewer</h2>
-    <span style="color: #10b981; font-weight: 600; font-size: 11px;">● Live In-Memory Sync</span>
+  <h2>📊 แทรกตาราง Sheet เปรียบเทียบข้อมูล</h2>
+  <p class="sub">เลือกรูปแบบหรือกำหนดคอลัมน์/แถวได้อิสระ ตารางจะถูกวาดลงบนกระดาน Drawdy ทันที</p>
+
+  <div class="section-title">1. เลือกรูปแบบตารางสำเร็จรูป (Preset Template)</div>
+  <div class="templates">
+    <div class="tpl-btn active" onclick="selectTemplate('compare3')">
+      <div class="tpl-name">📋 เปรียบเทียบ 3 คอลัมน์</div>
+      <div class="tpl-desc">หัวข้อ | ตัวเลือก A | ตัวเลือก B</div>
+    </div>
+    <div class="tpl-btn" onclick="selectTemplate('compare4')">
+      <div class="tpl-name">📊 เปรียบเทียบ 4 คอลัมน์</div>
+      <div class="tpl-desc">หัวข้อ | ทางเลือก 1 | ทางเลือก 2 | หมายเหตุ</div>
+    </div>
+    <div class="tpl-btn" onclick="selectTemplate('proscons')">
+      <div class="tpl-name">⚖️ ข้อดี vs ข้อเสีย</div>
+      <div class="tpl-desc">ประเด็น | ข้อดี (Pros) | ข้อเสีย (Cons) | ข้อสรุป</div>
+    </div>
+    <div class="tpl-btn" onclick="selectTemplate('pricing')">
+      <div class="tpl-name">💰 ตารางราคา & สเปก</div>
+      <div class="tpl-desc">แพ็กเกจ | ราคา | คุณสมบัติ | ความคุ้มค่า</div>
+    </div>
   </div>
 
-  <div class="tabs" id="tabContainer"></div>
-
-  <div class="toolbar">
-    <input type="text" id="searchInput" class="search-input" placeholder="🔍 ค้นหาข้อมูลในตาราง..." oninput="renderTable()" />
-    <button class="btn btn-primary" onclick="addRow()">➕ เพิ่มแถว</button>
-    <button class="btn" onclick="exportCsv()">📥 ส่งออก CSV</button>
-    <button class="btn btn-success" onclick="exportToCanvas()">🎨 ส่งออกไปยังกระดาน</button>
+  <div class="form-group">
+    <label>ชื่อตาราง (Table Title)</label>
+    <input type="text" id="tableTitle" value="ตารางเปรียบเทียบข้อมูล (Comparison Matrix)" />
   </div>
 
-  <div class="table-container">
-    <table id="dataTable">
-      <thead id="tableHead"></thead>
-      <tbody id="tableBody"></tbody>
-    </table>
+  <div class="form-group">
+    <label>ชื่อคอลัมน์ (คั่นด้วยเครื่องหมายจุลภาค ,)</label>
+    <input type="text" id="tableColumns" value="หัวข้อ / ฟีเจอร์, ❌ ตัวเลือกเดิม (Option A), ✅ ตัวเลือกใหม่ (Option B), 💡 ข้อได้เปรียบ / ผลลัพธ์" />
   </div>
 
-  <div class="footer">
-    <span id="rowStats">กำลังโหลดข้อมูล...</span>
-    <span>Drawdy Driver Protocol • Generic RDBMS Model</span>
+  <div class="row-cols">
+    <div class="form-group">
+      <label>จำนวนแถวเริ่มต้น (Rows)</label>
+      <input type="number" id="rowCount" value="4" min="1" max="15" />
+    </div>
+    <div class="form-group">
+      <label>ธีมสีหัวตาราง (Theme)</label>
+      <div class="color-picker" id="colorPicker">
+        <div class="color-opt active" style="background: #0284c7;" onclick="selectTheme('blue', this)"></div>
+        <div class="color-opt" style="background: #059669;" onclick="selectTheme('emerald', this)"></div>
+        <div class="color-opt" style="background: #7c3aed;" onclick="selectTheme('purple', this)"></div>
+        <div class="color-opt" style="background: #d97706;" onclick="selectTheme('amber', this)"></div>
+        <div class="color-opt" style="background: #1e293b;" onclick="selectTheme('dark', this)"></div>
+      </div>
+    </div>
   </div>
+
+  <button class="btn-create" onclick="submitTable()">✨ วาดตารางลง Canvas ทันที</button>
 
   <script>
-    const datasets = ${jsonStr};
-    let currentKey = "users";
-    let drawdyApi = null;
+    let currentTheme = "blue";
+    let drawdy = null;
     try {
       if (typeof acquireDrawdyApi === "function") {
-        drawdyApi = acquireDrawdyApi();
+        drawdy = acquireDrawdyApi();
       }
     } catch(e) {}
 
-    function renderTabs() {
-      const tc = document.getElementById("tabContainer");
-      tc.innerHTML = "";
-      Object.keys(datasets).forEach(k => {
-        const btn = document.createElement("button");
-        btn.className = "tab-btn " + (k === currentKey ? "active" : "");
-        btn.innerText = datasets[k].name + " (" + datasets[k].rows.length + ")";
-        btn.onclick = () => { currentKey = k; renderTabs(); renderTable(); };
-        tc.appendChild(btn);
-      });
-    }
+    const templates = {
+      compare3: {
+        title: "ตารางเปรียบเทียบ 2 ตัวเลือก (Comparison A vs B)",
+        columns: "หัวข้อ / ปัจจัย, ทางเลือก A (ระบบเดิม), ทางเลือก B (ระบบใหม่)",
+        rows: 4
+      },
+      compare4: {
+        title: "ตารางเปรียบเทียบฟีเจอร์ครบวงจร (Feature Matrix)",
+        columns: "หัวข้อ / ฟีเจอร์, ❌ ทำเองในองค์กร, ✅ ใช้โซลูชันภายนอก, 💡 ผลลัพธ์ / หมายเหตุ",
+        rows: 4
+      },
+      proscons: {
+        title: "ตารางวิเคราะห์ข้อดี-ข้อเสีย (Pros & Cons Analysis)",
+        columns: "ประเด็นพิจารณา, 👍 ข้อดี (Pros), ⚠️ ข้อจำกัด (Cons), 🎯 ข้อสรุปและทางออก",
+        rows: 3
+      },
+      pricing: {
+        title: "ตารางเปรียบเทียบแพ็กเกจราคา (Pricing Sheet)",
+        columns: "ระดับแพ็กเกจ (Tier), ราคาต่อเดือน, สเปก / ฟีเจอร์ที่ได้รับ, กลุ่มลูกค้าที่เหมาะสม",
+        rows: 3
+      }
+    };
 
-    function renderTable() {
-      const query = (document.getElementById("searchInput").value || "").toLowerCase();
-      const ds = datasets[currentKey];
-      const th = document.getElementById("tableHead");
-      const tb = document.getElementById("tableBody");
-
-      let headHtml = "<tr>";
-      ds.columns.forEach((col, idx) => {
-        const typeInfo = ds.types[idx] || "";
-        let badge = "";
-        if (typeInfo.includes("[PK]")) badge = '<span class="badge-pk">PK</span>';
-        else if (typeInfo.includes("[FK]")) badge = '<span class="badge-fk">FK</span>';
-        headHtml += '<th>' + col + badge + '<br><span style="font-size:9px; color:#64748b; font-weight:normal;">' + typeInfo.replace(/\\[.*?\\]/, "") + '</span></th>';
-      });
-      headHtml += '<th style="width: 40px; text-align: center;">ลบ</th></tr>';
-      th.innerHTML = headHtml;
-
-      let bodyHtml = "";
-      let count = 0;
-      ds.rows.forEach((row, rIdx) => {
-        const rowStr = row.join(" ").toLowerCase();
-        if (query && !rowStr.includes(query)) return;
-        count++;
-        bodyHtml += "<tr>";
-        row.forEach((cell, cIdx) => {
-          bodyHtml += '<td><div class="cell-editable" contenteditable="true" onblur="updateCell(' + rIdx + ',' + cIdx + ', this.innerText)">' + cell + '</div></td>';
-        });
-        bodyHtml += '<td style="text-align: center;"><button class="btn-del" onclick="deleteRow(' + rIdx + ')" title="ลบแถวนี้">✕</button></td></tr>';
-      });
-      tb.innerHTML = bodyHtml;
-
-      document.getElementById("rowStats").innerText = "แสดง " + count + " จาก " + ds.rows.length + " แถว • ตาราง " + ds.name;
-    }
-
-    function updateCell(r, c, val) {
-      datasets[currentKey].rows[r][c] = val;
-    }
-
-    function addRow() {
-      const ds = datasets[currentKey];
-      const newRow = ds.columns.map((col, idx) => {
-        if (idx === 0) return currentKey.slice(0, 3) + "_" + String(ds.rows.length + 1).padStart(3, "0");
-        return "New " + col;
-      });
-      ds.rows.push(newRow);
-      renderTabs();
-      renderTable();
-    }
-
-    function deleteRow(rIdx) {
-      datasets[currentKey].rows.splice(rIdx, 1);
-      renderTabs();
-      renderTable();
-    }
-
-    function exportCsv() {
-      const ds = datasets[currentKey];
-      let csv = ds.columns.join(",") + "\\n";
-      ds.rows.forEach(r => {
-        csv += r.map(c => '"' + c.replace(/"/g, '""') + '"').join(",") + "\\n";
-      });
-      const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
-      const link = document.createElement("a");
-      link.href = URL.createObjectURL(blob);
-      link.download = currentKey + "_export.csv";
-      link.click();
-    }
-
-    function exportToCanvas() {
-      const ds = datasets[currentKey];
-      if (drawdyApi) {
-        drawdyApi.postMessage({
-          type: "export_table_to_canvas",
-          tableKey: currentKey,
-          tableName: ds.name,
-          columns: ds.columns,
-          rows: ds.rows
-        });
-        alert("ส่งออกตารางไปยังกระดาน Drawdy เรียบร้อยแล้ว!");
-      } else {
-        alert("กำลังทำงานในโหมด Standalone: " + ds.name + " (" + ds.rows.length + " แถว)");
+    function selectTemplate(key) {
+      document.querySelectorAll(".tpl-btn").forEach(b => b.classList.remove("active"));
+      event.currentTarget.classList.add("active");
+      const t = templates[key];
+      if (t) {
+        document.getElementById("tableTitle").value = t.title;
+        document.getElementById("tableColumns").value = t.columns;
+        document.getElementById("rowCount").value = t.rows;
       }
     }
 
-    renderTabs();
-    renderTable();
+    function selectTheme(theme, el) {
+      currentTheme = theme;
+      document.querySelectorAll(".color-opt").forEach(c => c.classList.remove("active"));
+      el.classList.add("active");
+    }
+
+    function submitTable() {
+      const title = document.getElementById("tableTitle").value.trim() || "ตารางเปรียบเทียบ";
+      const colStr = document.getElementById("tableColumns").value.trim();
+      const columns = colStr ? colStr.split(",").map(c => c.trim()).filter(Boolean) : ["คอลัมน์ 1", "คอลัมน์ 2"];
+      const rowCount = parseInt(document.getElementById("rowCount").value, 10) || 3;
+
+      if (drawdy) {
+        drawdy.postMessage({
+          type: "create_canvas_table",
+          title,
+          columns,
+          rowCount,
+          theme: currentTheme
+        });
+      } else {
+        alert("สร้างตาราง: " + title + " (" + columns.length + " คอลัมน์, " + rowCount + " แถว)");
+      }
+    }
   </script>
 </body>
 </html>`;
 }
 
-async function openWebview() {
+async function openCreatorDialog() {
   await issue({
     type: "command:webview:create",
     driverId,
     requestId: nextRequestId(),
     req: {
       webviewId: WEBVIEW_ID,
-      title: "📊 Database Sheet & Table Viewer",
-      srcDoc: buildWebviewHtml(),
-      width: 820,
-      height: 560
+      title: "📊 แทรกตาราง Sheet เปรียบเทียบข้อมูล",
+      srcDoc: buildCreatorHtml(),
+      width: 580,
+      height: 540
+    }
+  });
+}
+
+async function createTableOnCanvas(opts) {
+  const title = opts.title || "ตารางเปรียบเทียบ";
+  const columns = opts.columns && opts.columns.length > 0 ? opts.columns : ["หัวข้อ", "ตัวเลือก A", "ตัวเลือก B"];
+  const rowCount = opts.rowCount || 4;
+  const themeKey = opts.theme || "blue";
+  const theme = THEMES[themeKey] || THEMES.blue;
+
+  // 1. Get camera info to place table in front of user
+  let cameraX = 2000;
+  let cameraY = 600;
+  try {
+    const camRes = await issue({
+      type: "command:camera:get-info",
+      driverId,
+      requestId: nextRequestId(),
+      req: {}
+    });
+    if (camRes && camRes.res && camRes.res.value) {
+      cameraX = camRes.res.value.x;
+      cameraY = camRes.res.value.y;
+    }
+  } catch (e) {}
+
+  // Column width calculation: average 240px per col, min 180, max 320
+  const colCount = columns.length;
+  const colWidth = Math.max(200, Math.min(300, Math.floor(1000 / colCount)));
+  const totalWidth = colWidth * colCount;
+  const headerHeight = 48;
+  const rowHeight = 44;
+
+  const startX = Math.round(cameraX - (totalWidth / 2));
+  const startY = Math.round(cameraY - ((headerHeight + (rowCount * rowHeight)) / 2));
+
+  const elements = [];
+  const createdIds = [];
+
+  // Table Title Header Card
+  const titleId = generateId ? generateId() : "title_" + Date.now();
+  elements.push({
+    type: "shape",
+    componentType: "rect",
+    drawdyElementId: titleId,
+    x: startX,
+    y: startY - 44,
+    width: totalWidth,
+    height: 38,
+    strokeColor: theme.headerBorder,
+    fillColor: theme.headerBg,
+    text: `📊 ${title}`,
+    fontSize: 16
+  });
+  createdIds.push(titleId);
+
+  // Column Headers
+  let curX = startX;
+  const headerY = startY;
+  for (let c = 0; c < colCount; c++) {
+    const cellId = generateId ? generateId() : `head_${c}_${Date.now()}`;
+    elements.push({
+      type: "shape",
+      componentType: "rect",
+      drawdyElementId: cellId,
+      x: curX,
+      y: headerY,
+      width: colWidth,
+      height: headerHeight,
+      strokeColor: theme.headerBorder,
+      fillColor: theme.headerBg,
+      text: columns[c],
+      fontSize: 14
+    });
+    createdIds.push(cellId);
+    curX += colWidth;
+  }
+
+  // Body Rows
+  for (let r = 0; r < rowCount; r++) {
+    const curY = startY + headerHeight + (r * rowHeight);
+    curX = startX;
+    const bg = (r % 2 === 0) ? "#ffffff" : theme.altBg;
+
+    for (let c = 0; c < colCount; c++) {
+      const cellId = generateId ? generateId() : `cell_${r}_${c}_${Date.now()}`;
+      let cellText = "";
+      if (c === 0) {
+        cellText = `ประเด็นที่ ${r + 1}`;
+      } else {
+        cellText = "พิมพ์ข้อมูลเปรียบเทียบที่นี่...";
+      }
+
+      elements.push({
+        type: "shape",
+        componentType: "rect",
+        drawdyElementId: cellId,
+        x: curX,
+        y: curY,
+        width: colWidth,
+        height: rowHeight,
+        strokeColor: theme.border,
+        fillColor: bg,
+        text: cellText,
+        fontSize: 13
+      });
+      createdIds.push(cellId);
+      curX += colWidth;
+    }
+  }
+
+  // Remember table info for Add Row button
+  lastTable = {
+    startX,
+    startY,
+    colWidth,
+    colCount,
+    rowCount,
+    rowHeight,
+    headerHeight,
+    theme
+  };
+
+  // Issue add elements command
+  await issue({
+    type: "command:scene:add-drawdy-elements",
+    driverId,
+    requestId: nextRequestId(),
+    req: { elements }
+  });
+
+  // Smooth fly-to camera
+  await issue({
+    type: "command:camera:fly-to-elements",
+    driverId,
+    requestId: nextRequestId(),
+    req: {
+      drawdyElementIds: createdIds,
+      flyDurationMs: 500,
+      zoom: 0.95
+    }
+  });
+
+  // Close creator dialog
+  try {
+    await issue({
+      type: "command:webview:close",
+      driverId,
+      requestId: nextRequestId(),
+      req: { webviewId: WEBVIEW_ID }
+    });
+  } catch(e) {}
+}
+
+async function addRowToLastTable() {
+  if (!lastTable) {
+    // If no last table, create a quick 3-column table
+    await createTableOnCanvas({
+      title: "ตารางเปรียบเทียบ (Comparison Sheet)",
+      columns: ["หัวข้อ / เกณฑ์", "ทางเลือก A", "ทางเลือก B"],
+      rowCount: 3,
+      theme: "blue"
+    });
+    return;
+  }
+
+  const { startX, startY, colWidth, colCount, rowCount, rowHeight, headerHeight, theme } = lastTable;
+  const newRowIndex = rowCount;
+  const curY = startY + headerHeight + (newRowIndex * rowHeight);
+  const bg = (newRowIndex % 2 === 0) ? "#ffffff" : theme.altBg;
+
+  const elements = [];
+  const createdIds = [];
+  let curX = startX;
+
+  for (let c = 0; c < colCount; c++) {
+    const cellId = generateId ? generateId() : `row_${newRowIndex}_${c}_${Date.now()}`;
+    const cellText = c === 0 ? `ประเด็นที่ ${newRowIndex + 1}` : "ดับเบิลคลิกเพื่อกรอกข้อมูล";
+    elements.push({
+      type: "shape",
+      componentType: "rect",
+      drawdyElementId: cellId,
+      x: curX,
+      y: curY,
+      width: colWidth,
+      height: rowHeight,
+      strokeColor: theme.border,
+      fillColor: bg,
+      text: cellText,
+      fontSize: 13
+    });
+    createdIds.push(cellId);
+    curX += colWidth;
+  }
+
+  lastTable.rowCount += 1;
+
+  await issue({
+    type: "command:scene:add-drawdy-elements",
+    driverId,
+    requestId: nextRequestId(),
+    req: { elements }
+  });
+
+  await issue({
+    type: "command:camera:fly-to-elements",
+    driverId,
+    requestId: nextRequestId(),
+    req: {
+      drawdyElementIds: createdIds,
+      flyDurationMs: 300,
+      zoom: 0.95
     }
   });
 }
@@ -258,47 +412,81 @@ exports.activate = async (ctx) => {
   driverId = ctx.manifest.driverId;
   generateId = ctx.generateId;
 
-  // 1. Create Top Action Button
+  // 1. Action Bar Button 1: Insert Table
   await issue({
     type: "command:dom:create-action-button",
     driverId,
     requestId: nextRequestId(),
     req: {
-      buttonId: ACTION_BTN_ID,
-      label: "📊 ตารางฐานข้อมูล (Database Sheet)",
+      buttonId: ACTION_BTN_INSERT,
+      label: "📊 แทรกตาราง Sheet (Insert Table)",
       position: "top"
     }
   });
 
-  // 2. Subscriptions for Button
+  // 2. Action Bar Button 2: Add Row
+  await issue({
+    type: "command:dom:create-action-button",
+    driverId,
+    requestId: nextRequestId(),
+    req: {
+      buttonId: ACTION_BTN_ADD_ROW,
+      label: "➕ เพิ่มแถว (Add Row)",
+      position: "top"
+    }
+  });
+
+  // 3. Subscriptions for Action Buttons
   await issue({
     type: "subscription:dom:element-clicked",
     driverId,
     requestId: nextRequestId(),
-    req: { elementId: ACTION_BTN_ID }
+    req: { elementId: ACTION_BTN_INSERT }
+  });
+  await issue({
+    type: "subscription:dom:element-clicked",
+    driverId,
+    requestId: nextRequestId(),
+    req: { elementId: ACTION_BTN_ADD_ROW }
   });
 
-  // 3. Create Context Menu
+  // 4. Context Menu 1: Open Dialog
   await issue({
     type: "command:context-menu:add",
     driverId,
     requestId: nextRequestId(),
     req: {
-      menuId: MENU_ID,
-      menuTitle: "📊 เปิด Database Sheet Webview",
+      menuId: MENU_INSERT,
+      menuTitle: "📊 แทรกตาราง Sheet เปรียบเทียบข้อมูล...",
       target: "canvas"
     }
   });
-
-  // 4. Subscriptions for Context Menu
   await issue({
     type: "subscription:context-menu:clicked",
     driverId,
     requestId: nextRequestId(),
-    req: { menuId: MENU_ID }
+    req: { menuId: MENU_INSERT }
   });
 
-  // 5. Subscription for Webview Messages
+  // 5. Context Menu 2: Quick 3-Col Comparison
+  await issue({
+    type: "command:context-menu:add",
+    driverId,
+    requestId: nextRequestId(),
+    req: {
+      menuId: MENU_QUICK_3,
+      menuTitle: "📋 สร้างตารางเปรียบเทียบด่วน 3 คอลัมน์ (A vs B)",
+      target: "canvas"
+    }
+  });
+  await issue({
+    type: "subscription:context-menu:clicked",
+    driverId,
+    requestId: nextRequestId(),
+    req: { menuId: MENU_QUICK_3 }
+  });
+
+  // 6. Subscription for Webview Messages
   await issue({
     type: "subscription:webview:message",
     driverId,
@@ -308,54 +496,27 @@ exports.activate = async (ctx) => {
 };
 
 exports.onEvent = async (event) => {
-  if (event.type === "subscription:dom:element-clicked" && event.body.elementId === ACTION_BTN_ID) {
-    await openWebview();
-  } else if (event.type === "subscription:context-menu:clicked" && event.body.menuId === MENU_ID) {
-    await openWebview();
+  if (event.type === "subscription:dom:element-clicked") {
+    if (event.body.elementId === ACTION_BTN_INSERT) {
+      await openCreatorDialog();
+    } else if (event.body.elementId === ACTION_BTN_ADD_ROW) {
+      await addRowToLastTable();
+    }
+  } else if (event.type === "subscription:context-menu:clicked") {
+    if (event.body.menuId === MENU_INSERT) {
+      await openCreatorDialog();
+    } else if (event.body.menuId === MENU_QUICK_3) {
+      await createTableOnCanvas({
+        title: "ตารางเปรียบเทียบข้อมูล (Comparison Matrix)",
+        columns: ["หัวข้อ / ประเด็น", "❌ ตัวเลือก A (ระบบเดิม)", "✅ ตัวเลือก B (ระบบใหม่)"],
+        rowCount: 4,
+        theme: "blue"
+      });
+    }
   } else if (event.type === "subscription:webview:message" && event.body.webviewId === WEBVIEW_ID) {
     const msg = event.body.message;
-    if (msg && msg.type === "export_table_to_canvas") {
-      const cardId = generateId ? generateId() : "card_" + Date.now();
-      let bodyText = "";
-      (msg.rows || []).slice(0, 6).forEach((r, idx) => {
-        bodyText += `[#${idx + 1}] ` + r.join(" | ") + "\n";
-      });
-      if ((msg.rows || []).length > 6) {
-        bodyText += `... และอีก ${msg.rows.length - 6} แถว`;
-      }
-
-      // Add a fresh card on the canvas
-      await issue({
-        type: "command:scene:add-drawdy-elements",
-        driverId,
-        requestId: nextRequestId(),
-        req: {
-          elements: [
-            {
-              type: "card",
-              drawdyElementId: cardId,
-              x: 3700,
-              y: 1100,
-              width: 820,
-              title: `📊 ส่งออกข้อมูล: ${msg.tableName} (${msg.rows.length} แถว)`,
-              body: bodyText,
-              background: "teal"
-            }
-          ]
-        }
-      });
-
-      // Fly camera to it
-      await issue({
-        type: "command:camera:fly-to-elements",
-        driverId,
-        requestId: nextRequestId(),
-        req: {
-          drawdyElementIds: [cardId],
-          flyDurationMs: 500,
-          zoom: 0.9
-        }
-      });
+    if (msg && msg.type === "create_canvas_table") {
+      await createTableOnCanvas(msg);
     }
   }
 };
