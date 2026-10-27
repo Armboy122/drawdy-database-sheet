@@ -1,0 +1,17 @@
+{
+  "name": "drawdy-database-sheet",
+  "version": "1.0.0",
+  "description": "Interactive spreadsheet and database table viewer extension for Drawdy Whiteboard",
+  "main": "main.js",
+  "scripts": {
+    "build": "zip -r dist/drawdy-database-sheet.drawdyx manifest.json main.js icon.svg README.md"
+  },
+  "keywords": [
+    "drawdy",
+    "drawdy-extension",
+    "spreadsheet",
+    "database"
+  ],
+  "author": "Armboy122",
+  "license": "MIT"
+}

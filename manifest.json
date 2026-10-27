@@ -1,0 +1,12 @@
+{
+  "driverId": "drawdy.database-sheet",
+  "driverName": "Database Sheet & Table Viewer",
+  "driverVersion": "1.0.0",
+  "description": "Interactive spreadsheet and database table viewer with multi-table tabs (Users, Products, Orders, Invoices), real-time search, inline row editing, CSV export, and 1-click Export to Canvas.",
+  "main": "main.js",
+  "icon": "icon.svg",
+  "permissions": [
+    "dom",
+    "scene"
+  ]
+}
